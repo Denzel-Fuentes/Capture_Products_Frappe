@@ -1,0 +1,494 @@
+{
+ "actions": [],
+ "autoname": "CAP-.YYYY.-.#####",
+ "creation": "2026-11-05 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "estado",
+  "capturado_por",
+  "column_break_cabecera",
+  "fecha_captura",
+  "metodo_entrada",
+  "seccion_entrada",
+  "transcripcion",
+  "imagen_principal",
+  "galeria",
+  "fotos",
+  "codigos_barras",
+  "sin_codigo",
+  "tiene_variantes",
+  "atributos",
+  "variantes",
+  "seccion_extraidos",
+  "tipo_producto",
+  "marca",
+  "marca_corta",
+  "variante_descripcion",
+  "variante_corta",
+  "column_break_extraidos",
+  "medida_valor",
+  "medida_unidad",
+  "item_group",
+  "stock_uom",
+  "confianza_ia",
+  "seccion_descripcion",
+  "descripcion",
+  "advertencias_ia",
+  "mensaje_capturador",
+  "seccion_nombre",
+  "item_name",
+  "column_break_nombre",
+  "item_code",
+  "seccion_resultado",
+  "aprobado_por",
+  "aprobado_en",
+  "item",
+  "column_break_resultado",
+  "hoja_exportacion",
+  "fila_sheet",
+  "exportado_en",
+  "seccion_tecnica",
+  "intentos_ia",
+  "modelo_ia",
+  "column_break_tecnica",
+  "reintentos_ia",
+  "reintentar_ia_en",
+  "client_uuid",
+  "seccion_tecnica_detalle",
+  "respuesta_ia",
+  "error_log"
+ ],
+ "fields": [
+  {
+   "default": "Borrador",
+   "fieldname": "estado",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Estado",
+   "no_copy": 1,
+   "options": "Borrador\nProcesando\nPor revisar\nAprobado\nExportado\nCreado\nError",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "default": "__user",
+   "fieldname": "capturado_por",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Capturado por",
+   "options": "User",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "column_break_cabecera",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Now",
+   "fieldname": "fecha_captura",
+   "fieldtype": "Datetime",
+   "label": "Fecha de captura",
+   "no_copy": 1,
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "metodo_entrada",
+   "fieldtype": "Select",
+   "label": "Método de entrada",
+   "options": "\nVoz\nTexto",
+   "read_only": 1
+  },
+  {
+   "fieldname": "seccion_entrada",
+   "fieldtype": "Section Break",
+   "label": "Entrada"
+  },
+  {
+   "description": "Mínimo 3 caracteres para enviar.",
+   "fieldname": "transcripcion",
+   "fieldtype": "Small Text",
+   "label": "Lo que se dictó"
+  },
+  {
+   "fieldname": "imagen_principal",
+   "fieldtype": "Attach Image",
+   "in_list_view": 1,
+   "label": "Foto principal",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "galeria",
+   "fieldtype": "HTML",
+   "label": "Galería de fotos"
+  },
+  {
+   "fieldname": "fotos",
+   "fieldtype": "Table",
+   "label": "Fotos",
+   "options": "Captura Foto"
+  },
+  {
+   "fieldname": "codigos_barras",
+   "fieldtype": "Table",
+   "label": "Códigos de barras",
+   "options": "Captura Codigo Barras"
+  },
+  {
+   "default": "0",
+   "fieldname": "sin_codigo",
+   "fieldtype": "Check",
+   "label": "Producto sin código de barras"
+  },
+  {
+   "default": "0",
+   "fieldname": "tiene_variantes",
+   "fieldtype": "Check",
+   "label": "¿Tiene variantes?"
+  },
+  {
+   "depends_on": "eval:doc.tiene_variantes",
+   "description": "De 1 a 3 Item Attribute existentes. El orden define valor 1, 2 y 3 de cada variante.",
+   "fieldname": "atributos",
+   "fieldtype": "Table",
+   "label": "Atributos de las variantes",
+   "options": "Captura Atributo"
+  },
+  {
+   "depends_on": "eval:doc.tiene_variantes",
+   "fieldname": "variantes",
+   "fieldtype": "Table",
+   "label": "Variantes",
+   "options": "Captura Variante"
+  },
+  {
+   "fieldname": "seccion_extraidos",
+   "fieldtype": "Section Break",
+   "label": "Datos extraídos"
+  },
+  {
+   "description": "Ej. Gaseosa, Jugo, Agua",
+   "fieldname": "tipo_producto",
+   "fieldtype": "Data",
+   "label": "Tipo de producto"
+  },
+  {
+   "fieldname": "marca",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Marca"
+  },
+  {
+   "description": "2 a 10 caracteres A-Z y 0-9",
+   "fieldname": "marca_corta",
+   "fieldtype": "Data",
+   "label": "Marca para el código"
+  },
+  {
+   "description": "Ej. Sin Azucar. Vacío si es plantilla.",
+   "fieldname": "variante_descripcion",
+   "fieldtype": "Data",
+   "label": "Variante del producto"
+  },
+  {
+   "description": "2 a 12 caracteres A-Z y 0-9",
+   "fieldname": "variante_corta",
+   "fieldtype": "Data",
+   "label": "Variante para el código"
+  },
+  {
+   "fieldname": "column_break_extraidos",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "medida_valor",
+   "fieldtype": "Float",
+   "label": "Medida",
+   "precision": "2"
+  },
+  {
+   "fieldname": "medida_unidad",
+   "fieldtype": "Select",
+   "label": "Unidad de medida",
+   "options": "\nml\nL\ng\nkg\nu"
+  },
+  {
+   "fieldname": "item_group",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Grupo de producto",
+   "options": "Item Group"
+  },
+  {
+   "fieldname": "stock_uom",
+   "fieldtype": "Link",
+   "label": "Unidad de stock",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "confianza_ia",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Confianza IA",
+   "read_only": 1
+  },
+  {
+   "fieldname": "seccion_descripcion",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "descripcion",
+   "fieldtype": "Small Text",
+   "label": "Descripción"
+  },
+  {
+   "description": "Una por línea. [Bloquea] impide aprobar; [Aviso] solo informa.",
+   "fieldname": "advertencias_ia",
+   "fieldtype": "Small Text",
+   "label": "Advertencias",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "mensaje_capturador",
+   "fieldtype": "Small Text",
+   "label": "Mensaje para el capturador",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "seccion_nombre",
+   "fieldtype": "Section Break",
+   "label": "Nombre y código"
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "in_global_search": 1,
+   "in_list_view": 1,
+   "label": "Nombre del ítem",
+   "length": 140,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "column_break_nombre",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Data",
+   "in_global_search": 1,
+   "in_list_view": 1,
+   "label": "Código del ítem",
+   "length": 140,
+   "no_copy": 1,
+   "search_index": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "seccion_resultado",
+   "fieldtype": "Section Break",
+   "label": "Resultado"
+  },
+  {
+   "fieldname": "aprobado_por",
+   "fieldtype": "Link",
+   "label": "Aprobado por",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "aprobado_en",
+   "fieldtype": "Datetime",
+   "label": "Aprobado en",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "item",
+   "fieldtype": "Link",
+   "label": "Item creado",
+   "no_copy": 1,
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_resultado",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "hoja_exportacion",
+   "fieldtype": "Data",
+   "label": "Pestaña del Sheet",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "fila_sheet",
+   "fieldtype": "Int",
+   "label": "Fila del Sheet",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "exportado_en",
+   "fieldtype": "Datetime",
+   "label": "Exportado en",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "seccion_tecnica",
+   "fieldtype": "Section Break",
+   "label": "Técnica"
+  },
+  {
+   "default": "0",
+   "fieldname": "intentos_ia",
+   "fieldtype": "Int",
+   "label": "Intentos IA",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "modelo_ia",
+   "fieldtype": "Data",
+   "label": "Modelo usado",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_tecnica",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "Reintentos automáticos de la IA en el envío actual (máximo 2).",
+   "fieldname": "reintentos_ia",
+   "fieldtype": "Int",
+   "label": "Reintentos automáticos",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "description": "Hora a partir de la cual el programador vuelve a encolar la IA tras un error transitorio.",
+   "fieldname": "reintentar_ia_en",
+   "fieldtype": "Datetime",
+   "label": "Próximo reintento IA",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "description": "Lo genera /captura para que reintentar el envío no duplique la captura.",
+   "fieldname": "client_uuid",
+   "fieldtype": "Data",
+   "label": "ID de envío del celular",
+   "no_copy": 1,
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "seccion_tecnica_detalle",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "respuesta_ia",
+   "fieldtype": "Code",
+   "label": "Respuesta IA (JSON)",
+   "no_copy": 1,
+   "options": "JSON",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "error_log",
+   "fieldtype": "Long Text",
+   "label": "Último error",
+   "no_copy": 1,
+   "permlevel": 1,
+   "read_only": 1
+  }
+ ],
+ "image_field": "imagen_principal",
+ "links": [],
+ "modified": "2026-11-05 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Captura Productos",
+ "name": "Captura de Producto",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Item Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "if_owner": 1,
+   "read": 1,
+   "role": "Capturador de Productos"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "System Manager"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Item Manager"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Stock Manager"
+  }
+ ],
+ "row_format": "Dynamic",
+ "search_fields": "item_name,item_code,marca,transcripcion",
+ "show_title_field_in_link": 0,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "item_name",
+ "track_changes": 1
+}

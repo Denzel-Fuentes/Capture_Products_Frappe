@@ -1,0 +1,50 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-05 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "dicho",
+  "forma_correcta",
+  "abreviatura"
+ ],
+ "fields": [
+  {
+   "description": "Separadas por coma. Se comparan sin tildes ni mayúsculas.",
+   "fieldname": "dicho",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Formas dictadas",
+   "reqd": 1
+  },
+  {
+   "fieldname": "forma_correcta",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Forma correcta",
+   "reqd": 1
+  },
+  {
+   "description": "Opcional, 2 a 10 caracteres A-Z y 0-9",
+   "fieldname": "abreviatura",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Abreviatura"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Captura Productos",
+ "name": "Glosario de Marcas",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

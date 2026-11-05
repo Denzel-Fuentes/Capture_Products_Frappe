@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node / assets compilados (los genera "bench build")
+node_modules/
+captura_productos/public/dist/
+captura_productos/public/node_modules/
+*.log
+
+# Secretos: nunca al repo (API key de Anthropic y credenciales de Google van en
+# "Configuracion Captura" dentro de ERPNext, no en archivos)
+.env
+.env.*
+!.env.example
+*.env.ps1
+*.token
+*.pem
+*.key
+*.p12
+service-account*.json
+credentials*.json
+*-credentials.json
+secrets/
+
+# Editores / SO
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*~
+
+# Credenciales locales de desarrollo
+*.local.md

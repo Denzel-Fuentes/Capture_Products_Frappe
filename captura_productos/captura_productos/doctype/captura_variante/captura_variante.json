@@ -1,0 +1,131 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-05 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "transcripcion",
+  "foto",
+  "column_break_valores",
+  "valor_1",
+  "valor_corto_1",
+  "valor_2",
+  "valor_corto_2",
+  "valor_3",
+  "valor_corto_3",
+  "seccion_codigo",
+  "barcode",
+  "barcode_type",
+  "column_break_nombre",
+  "item_name",
+  "item_code",
+  "item"
+ ],
+ "fields": [
+  {
+   "fieldname": "transcripcion",
+   "fieldtype": "Small Text",
+   "label": "Lo que se dictó"
+  },
+  {
+   "fieldname": "foto",
+   "fieldtype": "Attach Image",
+   "label": "Foto"
+  },
+  {
+   "fieldname": "column_break_valores",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "valor_1",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Valor atributo 1"
+  },
+  {
+   "fieldname": "valor_corto_1",
+   "fieldtype": "Data",
+   "label": "Abrev. atributo 1"
+  },
+  {
+   "fieldname": "valor_2",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Valor atributo 2"
+  },
+  {
+   "fieldname": "valor_corto_2",
+   "fieldtype": "Data",
+   "label": "Abrev. atributo 2"
+  },
+  {
+   "fieldname": "valor_3",
+   "fieldtype": "Data",
+   "label": "Valor atributo 3"
+  },
+  {
+   "fieldname": "valor_corto_3",
+   "fieldtype": "Data",
+   "label": "Abrev. atributo 3"
+  },
+  {
+   "fieldname": "seccion_codigo",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "barcode",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Código de barras",
+   "length": 20
+  },
+  {
+   "fieldname": "barcode_type",
+   "fieldtype": "Select",
+   "label": "Tipo",
+   "options": "\nEAN-13\nEAN-8\nUPC-A",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_nombre",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Nombre del ítem",
+   "length": 140
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Código del ítem",
+   "length": 140
+  },
+  {
+   "fieldname": "item",
+   "fieldtype": "Link",
+   "label": "Item creado",
+   "no_copy": 1,
+   "options": "Item",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Captura Productos",
+ "name": "Captura Variante",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

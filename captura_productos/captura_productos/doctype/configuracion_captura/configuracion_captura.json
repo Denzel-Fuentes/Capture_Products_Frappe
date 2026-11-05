@@ -1,0 +1,306 @@
+{
+ "actions": [],
+ "creation": "2026-11-05 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "seccion_ia",
+  "anthropic_api_key",
+  "modelo_ia",
+  "max_fotos_ia",
+  "column_break_ia",
+  "timeout_ia_seg",
+  "idioma_voz",
+  "seccion_ia_extra",
+  "instrucciones_extra_ia",
+  "seccion_sheets",
+  "google_service_account_json",
+  "spreadsheet_id",
+  "column_break_sheets",
+  "pestana_sheet",
+  "url_base_imagenes",
+  "crear_maestros_al_exportar",
+  "seccion_nombre",
+  "plantilla_nombre",
+  "plantilla_codigo",
+  "quitar_tildes_nombre",
+  "estilo_mayusculas",
+  "column_break_nombre",
+  "largo_max_nombre",
+  "largo_max_codigo",
+  "atributos_de_medida",
+  "prefijo_defecto",
+  "seccion_item",
+  "item_group_defecto",
+  "uom_defecto",
+  "empresa",
+  "almacen_defecto",
+  "column_break_item",
+  "is_stock_item",
+  "is_sales_item",
+  "is_purchase_item",
+  "seccion_prefijos",
+  "prefijos",
+  "seccion_glosario",
+  "glosario_marcas"
+ ],
+ "fields": [
+  {
+   "fieldname": "seccion_ia",
+   "fieldtype": "Section Break",
+   "label": "IA"
+  },
+  {
+   "fieldname": "anthropic_api_key",
+   "fieldtype": "Password",
+   "label": "API key Anthropic",
+   "length": 255
+  },
+  {
+   "default": "claude-sonnet-5-5",
+   "fieldname": "modelo_ia",
+   "fieldtype": "Data",
+   "label": "Modelo",
+   "reqd": 1
+  },
+  {
+   "default": "4",
+   "fieldname": "max_fotos_ia",
+   "fieldtype": "Int",
+   "label": "Fotos enviadas a la IA",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_ia",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "60",
+   "fieldname": "timeout_ia_seg",
+   "fieldtype": "Int",
+   "label": "Timeout IA (s)",
+   "reqd": 1
+  },
+  {
+   "default": "es-BO",
+   "fieldname": "idioma_voz",
+   "fieldtype": "Select",
+   "label": "Idioma del dictado",
+   "options": "es-BO\nes-419\nes-ES",
+   "reqd": 1
+  },
+  {
+   "fieldname": "seccion_ia_extra",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "instrucciones_extra_ia",
+   "fieldtype": "Long Text",
+   "label": "Instrucciones extra para la IA"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "seccion_sheets",
+   "fieldtype": "Section Break",
+   "label": "Google Sheets"
+  },
+  {
+   "fieldname": "google_service_account_json",
+   "fieldtype": "Password",
+   "label": "Credenciales de la cuenta de servicio (JSON)",
+   "length": 10000
+  },
+  {
+   "fieldname": "spreadsheet_id",
+   "fieldtype": "Data",
+   "label": "ID del spreadsheet"
+  },
+  {
+   "fieldname": "column_break_sheets",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Items",
+   "fieldname": "pestana_sheet",
+   "fieldtype": "Data",
+   "label": "Prefijo de la pestaña",
+   "reqd": 1
+  },
+  {
+   "description": "Ej. https://mi-erp.example.com. Vacío: ruta relativa /files/...",
+   "fieldname": "url_base_imagenes",
+   "fieldtype": "Data",
+   "label": "URL base de las imágenes"
+  },
+  {
+   "default": "1",
+   "fieldname": "crear_maestros_al_exportar",
+   "fieldtype": "Check",
+   "label": "Crear Brand y atributos faltantes al exportar"
+  },
+  {
+   "fieldname": "seccion_nombre",
+   "fieldtype": "Section Break",
+   "label": "Nombre y código"
+  },
+  {
+   "default": "{marca} {variante} {medida}",
+   "description": "Placeholders: {prefijo} {tipo} {marca} {marca_corta} {variante} {variante_corta} {medida}",
+   "fieldname": "plantilla_nombre",
+   "fieldtype": "Data",
+   "label": "Plantilla de nombre",
+   "reqd": 1
+  },
+  {
+   "default": "{prefijo}-{marca_corta}-{variante_corta}-{medida}",
+   "fieldname": "plantilla_codigo",
+   "fieldtype": "Data",
+   "label": "Plantilla de código",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "quitar_tildes_nombre",
+   "fieldtype": "Check",
+   "label": "Quitar tildes y ñ del nombre"
+  },
+  {
+   "default": "Título",
+   "fieldname": "estilo_mayusculas",
+   "fieldtype": "Select",
+   "label": "Mayúsculas del nombre",
+   "options": "Título\nComo se dictó",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_nombre",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "80",
+   "fieldname": "largo_max_nombre",
+   "fieldtype": "Int",
+   "label": "Largo máximo del nombre",
+   "reqd": 1
+  },
+  {
+   "default": "40",
+   "fieldname": "largo_max_codigo",
+   "fieldtype": "Int",
+   "label": "Largo máximo del código",
+   "reqd": 1
+  },
+  {
+   "default": "Tamaño,Tamano,Presentacion",
+   "fieldname": "atributos_de_medida",
+   "fieldtype": "Data",
+   "label": "Atributos que son medida"
+  },
+  {
+   "default": "PRD",
+   "description": "Si el grupo no tiene prefijo se usan sus 3 primeras letras.",
+   "fieldname": "prefijo_defecto",
+   "fieldtype": "Data",
+   "label": "Prefijo si no hay grupo",
+   "reqd": 1
+  },
+  {
+   "fieldname": "seccion_item",
+   "fieldtype": "Section Break",
+   "label": "Valores por defecto del Item"
+  },
+  {
+   "fieldname": "item_group_defecto",
+   "fieldtype": "Link",
+   "label": "Grupo por defecto",
+   "options": "Item Group",
+   "reqd": 1
+  },
+  {
+   "fieldname": "uom_defecto",
+   "fieldtype": "Link",
+   "label": "UOM por defecto",
+   "options": "UOM",
+   "reqd": 1
+  },
+  {
+   "fieldname": "empresa",
+   "fieldtype": "Link",
+   "label": "Empresa",
+   "options": "Company"
+  },
+  {
+   "fieldname": "almacen_defecto",
+   "fieldtype": "Link",
+   "label": "Almacén por defecto",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "column_break_item",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_stock_item",
+   "fieldtype": "Check",
+   "label": "Mantener stock"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_sales_item",
+   "fieldtype": "Check",
+   "label": "Permitir venta"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_purchase_item",
+   "fieldtype": "Check",
+   "label": "Permitir compra"
+  },
+  {
+   "fieldname": "seccion_prefijos",
+   "fieldtype": "Section Break",
+   "label": "Prefijos por grupo"
+  },
+  {
+   "fieldname": "prefijos",
+   "fieldtype": "Table",
+   "label": "Prefijo por grupo",
+   "options": "Prefijo por Grupo"
+  },
+  {
+   "fieldname": "seccion_glosario",
+   "fieldtype": "Section Break",
+   "label": "Glosario de marcas"
+  },
+  {
+   "fieldname": "glosario_marcas",
+   "fieldtype": "Table",
+   "label": "Glosario de marcas",
+   "options": "Glosario de Marcas"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-11-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Captura Productos",
+ "name": "Configuracion Captura",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
