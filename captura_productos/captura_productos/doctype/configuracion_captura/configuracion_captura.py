@@ -52,8 +52,10 @@ class ConfiguracionCaptura(Document):
 		plantilla_nombre: DF.Data
 		prefijo_defecto: DF.Data
 		prefijos: DF.Table[PrefijoporGrupo]
+		proveedor_ia: DF.Literal["API local", "Anthropic directo"]
 		quitar_tildes_nombre: DF.Check
 		spreadsheet_id: DF.Data | None
+		timeout_ia: DF.Int
 		timeout_ia_seg: DF.Int
 		url_base_imagenes: DF.Data | None
 		uom_defecto: DF.Link
@@ -61,14 +63,19 @@ class ConfiguracionCaptura(Document):
 
 	@frappe.whitelist()
 	def probar_conexion_ia(self) -> str:
-		"""Botón "Probar conexión IA" (HU-14): valida la API key y el modelo guardados."""
+		"""Botón "Probar conexión IA" (HU-14): con la API local, que el servicio responda y que el token
+		sirva (consulta mínima); con Anthropic directo, la API key y el modelo guardados."""
 		from captura_productos.ai import extractor
 
 		frappe.only_for("System Manager")
-		api_key = self.get_password("anthropic_api_key", raise_exception=False)
-		if not api_key:
-			frappe.throw(_("Falta la API key de Anthropic: cárguela y guarde antes de probar."))
 		try:
+			if extractor.proveedor_de(self) == extractor.PROVEEDOR_LOCAL:
+				from captura_productos.ai import cliente_local
+
+				return cliente_local.probar_conexion()
+			api_key = self.get_password("anthropic_api_key", raise_exception=False)
+			if not api_key:
+				frappe.throw(_("Falta la API key de Anthropic: cárguela y guarde antes de probar."))
 			return extractor.probar_conexion(api_key, (self.modelo_ia or extractor.MODELO_DEFECTO).strip())
 		except extractor.ErrorIA as e:
 			frappe.throw(e.detalle, title=_("Conexión IA"))
@@ -87,10 +94,15 @@ class ConfiguracionCaptura(Document):
 			frappe.throw(e.mensaje, title=_("Google Sheet"))
 
 	def validate(self) -> None:
+		self._validar_timeout_ia()
 		self._validar_plantillas()
 		self._validar_largos()
 		self._validar_prefijos()
 		self._validar_glosario()
+
+	def _validar_timeout_ia(self) -> None:
+		if self.proveedor_ia == "API local" and not 30 <= (self.timeout_ia or 0) <= 900:
+			frappe.throw(_("El timeout de la API local debe estar entre 30 y 900 segundos."))
 
 	def _validar_plantillas(self) -> None:
 		for plantilla in (self.plantilla_nombre, self.plantilla_codigo):

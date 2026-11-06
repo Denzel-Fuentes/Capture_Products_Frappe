@@ -89,7 +89,9 @@ def configurar(**cambios) -> None:
 	conf = frappe.get_single("Configuracion Captura")
 	conf.update(
 		{
+			"proveedor_ia": "API local",
 			"modelo_ia": "claude-sonnet-5-5",
+			"timeout_ia": 180,
 			"plantilla_nombre": "{marca} {variante} {medida}",
 			"plantilla_codigo": "{prefijo}-{marca_corta}-{variante_corta}-{medida}",
 			"quitar_tildes_nombre": 1,

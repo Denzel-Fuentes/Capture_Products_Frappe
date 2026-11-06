@@ -5,10 +5,13 @@
  "engine": "InnoDB",
  "field_order": [
   "seccion_ia",
+  "proveedor_ia",
+  "ayuda_api_local",
   "anthropic_api_key",
   "modelo_ia",
   "max_fotos_ia",
   "column_break_ia",
+  "timeout_ia",
   "timeout_ia_seg",
   "idioma_voz",
   "seccion_ia_extra",
@@ -51,6 +54,23 @@
    "label": "IA"
   },
   {
+   "default": "API local",
+   "description": "API local: el servicio de Claude Code que corre en el mismo servidor. Anthropic directo: la API de Anthropic con API key.",
+   "fieldname": "proveedor_ia",
+   "fieldtype": "Select",
+   "label": "Proveedor de IA",
+   "options": "API local\nAnthropic directo",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.proveedor_ia==\"API local\"",
+   "fieldname": "ayuda_api_local",
+   "fieldtype": "HTML",
+   "label": "Ayuda API local",
+   "options": "<p class=\"text-muted small\">La URL y el token de la API local no se guardan aquí: van en el <code>site_config.json</code> del sitio. Configúrelos en el servidor con <code>bench --site &lt;sitio&gt; set-config claude_api_url http://127.0.0.1:8787</code> y <code>bench --site &lt;sitio&gt; set-config claude_api_token &lt;token&gt;</code>, y luego use <b>Probar conexión IA</b>.</p>"
+  },
+  {
+   "depends_on": "eval:doc.proveedor_ia==\"Anthropic directo\"",
    "fieldname": "anthropic_api_key",
    "fieldtype": "Password",
    "label": "API key Anthropic",
@@ -58,6 +78,7 @@
   },
   {
    "default": "claude-sonnet-5-5",
+   "description": "Ej. claude-sonnet-5-5 o claude-haiku-5-5 (más rápido y barato).",
    "fieldname": "modelo_ia",
    "fieldtype": "Data",
    "label": "Modelo",
@@ -75,11 +96,21 @@
    "fieldtype": "Column Break"
   },
   {
+   "default": "180",
+   "depends_on": "eval:doc.proveedor_ia==\"API local\"",
+   "description": "Tiempo máximo de cada consulta a la API local (30 a 900 s). Incluye la espera si el servicio está atendiendo otras consultas.",
+   "fieldname": "timeout_ia",
+   "fieldtype": "Int",
+   "label": "Timeout API local (s)",
+   "mandatory_depends_on": "eval:doc.proveedor_ia==\"API local\""
+  },
+  {
    "default": "60",
+   "depends_on": "eval:doc.proveedor_ia==\"Anthropic directo\"",
    "fieldname": "timeout_ia_seg",
    "fieldtype": "Int",
-   "label": "Timeout IA (s)",
-   "reqd": 1
+   "label": "Timeout Anthropic (s)",
+   "mandatory_depends_on": "eval:doc.proveedor_ia==\"Anthropic directo\""
   },
   {
    "default": "es-BO",
@@ -282,7 +313,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-05 12:00:00.000000",
+ "modified": "2026-11-05 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Captura Productos",
  "name": "Configuracion Captura",

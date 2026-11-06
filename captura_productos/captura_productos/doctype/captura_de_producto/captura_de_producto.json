@@ -51,6 +51,8 @@
   "seccion_tecnica",
   "intentos_ia",
   "modelo_ia",
+  "costo_ia_usd",
+  "duracion_ia_ms",
   "column_break_tecnica",
   "reintentos_ia",
   "reintentar_ia_en",
@@ -363,6 +365,26 @@
    "fieldtype": "Data",
    "label": "Modelo usado",
    "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Suma de lo que costaron todos los intentos con la API local (total_cost_usd).",
+   "fieldname": "costo_ia_usd",
+   "fieldtype": "Float",
+   "label": "Costo IA (USD)",
+   "no_copy": 1,
+   "permlevel": 1,
+   "precision": "4",
+   "read_only": 1
+  },
+  {
+   "description": "Duración de la última consulta a la API local (duration_ms).",
+   "fieldname": "duracion_ia_ms",
+   "fieldtype": "Int",
+   "label": "Duración IA (ms)",
+   "no_copy": 1,
+   "permlevel": 1,
    "read_only": 1
   },
   {

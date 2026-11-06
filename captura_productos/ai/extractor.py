@@ -1,24 +1,32 @@
 """Extractor de Claude (spec secciones 6, 13 y HU-13).
 
+Dos proveedores, según `proveedor_ia` de la Configuración:
+- **API local** (por defecto): el envoltorio HTTP de Claude Code que corre en el mismo servidor
+  (`cliente_local`). URL y token en site_config (`claude_api_url`, `claude_api_token`). Sin salida
+  estructurada: el JSON se pide por prompt y se extrae del texto.
+- **Anthropic directo**: la Messages API con API key y salida estructurada.
+
 Flujo del job `procesar_captura` (cola `long`), **un solo intento por ejecución**:
-1. Lee la captura (debe estar en Procesando) y la Configuración. Sin API key → Error.
-2. Arma el system prompt con el contexto del sitio (cacheado) y el mensaje con el dictado, los códigos
-   y hasta `max_fotos_ia` fotos en base64 (reducidas a `LADO_FOTO_IA` px). Solo se leen archivos
-   adjuntos a la misma captura.
-3. Cierra la transacción de lectura y llama a la Messages API con salida estructurada (esquema
-   `registrar_producto`), sin transacción abierta ni bloqueos mientras espera a Claude.
+1. Lee la captura (debe estar en Procesando) y la Configuración. Sin credencial (API key o token) →
+   Error.
+2. Arma el system prompt con el contexto del sitio y el mensaje con el dictado, los códigos y hasta
+   `max_fotos_ia` fotos (reducidas a `LADO_FOTO_IA` px). Solo se leen archivos adjuntos a la misma
+   captura.
+3. `obtener_datos_ia` cierra la transacción de lectura y llama al proveedor, sin transacción abierta
+   ni bloqueos mientras espera a Claude. Devuelve los datos del esquema `registrar_producto` y los
+   metadatos (modelo, costo, duración).
 4. Si la respuesta es buena, la aplica y llama a `marcar_procesada()` (nombre, código y validación).
-   Un error transitorio (429, 5xx, 529, timeout, red, JSON inválido) deja la captura en Procesando
-   con `reintentar_ia_en` = ahora + 30 s (1.er reintento) o + 120 s (2.º): el programador
-   (`reencolar_reintentos`, cada minuto) vuelve a encolar el job a esa hora. Así el worker no queda
-   dormido 150 s por captura. Tras 2 reintentos, o con un error definitivo (401, 400, 403, 404,
-   negativa), pasa a Error.
+   Un error transitorio (429, 5xx, 529, timeout, red, JSON inválido o fuera de esquema) deja la
+   captura en Procesando con `reintentar_ia_en` = ahora + 30 s (1.er reintento) o + 120 s (2.º): el
+   programador (`reencolar_reintentos`, cada minuto) vuelve a encolar el job a esa hora. Así el worker
+   no queda dormido 150 s por captura. Tras 2 reintentos, o con un error definitivo (401, 400, 403,
+   404, 413, negativa), pasa a Error.
 
 `rescatar_atascadas` (cada 15 min) pasa a Error las capturas que quedaron en Procesando sin job (worker
 caído, Redis sin el job, carrera de `deduplicate`), para que no queden así para siempre.
 
-La API key nunca se escribe en logs, `error_log` ni mensajes: `_sin_secretos` la enmascara por si
-algún mensaje de error la incluyera.
+La API key y el token nunca se escriben en logs, `error_log` ni mensajes: `_sin_secretos` los
+enmascara por si algún mensaje de error los incluyera.
 """
 
 from __future__ import annotations
@@ -27,14 +35,14 @@ import base64
 import io
 import json
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 import anthropic
 import frappe
 from frappe import _
-from frappe.utils import add_to_date, cint, now_datetime
+from frappe.utils import add_to_date, cint, flt, now_datetime
 
 from captura_productos import naming
 from captura_productos.ai import prompts
@@ -45,6 +53,8 @@ if TYPE_CHECKING:
 	)
 
 DOCTYPE = "Captura de Producto"
+PROVEEDOR_LOCAL = "API local"
+PROVEEDOR_ANTHROPIC = "Anthropic directo"
 METODO_JOB = "captura_productos.ai.extractor.procesar_captura"
 MODELO_DEFECTO = "claude-sonnet-5-5"
 # Incluye el pensamiento adaptativo (cuenta para max_tokens) y la salida JSON con hasta 20 variantes.
@@ -54,6 +64,7 @@ TIMEOUT_DEFECTO = 60
 MAX_FOTOS_DEFECTO = 4
 ESPERAS_REINTENTO = (30, 120)  # HU-13: segundos antes del 1.er y del 2.º reintento
 TIMEOUT_JOB = 300  # un solo intento de hasta `timeout_ia_seg` (60 s) más lectura de fotos, con margen
+MARGEN_JOB_LOCAL = 90  # API local: `timeout_ia` + margen de requests (30 s) + fotos y borrado de sesión
 MINUTOS_ATASCADA = 20  # Procesando sin job durante más que esto → Error (rescatar_atascadas)
 LADO_FOTO_IA = 1280  # lado mayor de la foto que se manda a Claude
 CALIDAD_JPEG_IA = 85
@@ -72,15 +83,48 @@ _FIRMAS_IMAGEN = (
 	(b"GIF87a", "image/gif"),
 	(b"GIF89a", "image/gif"),
 )
+EXTENSIONES = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}
 
 
 class ErrorIA(Exception):
-	"""Fallo al obtener o interpretar la respuesta de Claude. `transitorio` indica si se reintenta."""
+	"""Fallo al obtener o interpretar la respuesta de Claude. `transitorio` indica si se reintenta.
 
-	def __init__(self, detalle: str, transitorio: bool = False):
+	`respuesta` (texto crudo), `costo_usd` y `duracion_ms` se conocen cuando el proveedor llegó a
+	responder (por ejemplo, JSON inválido de la API local): se guardan igual en la captura."""
+
+	def __init__(
+		self,
+		detalle: str,
+		transitorio: bool = False,
+		*,
+		respuesta: str | None = None,
+		costo_usd: float = 0.0,
+		duracion_ms: int | None = None,
+	):
 		super().__init__(detalle)
 		self.detalle = detalle
 		self.transitorio = transitorio
+		self.respuesta = respuesta
+		self.costo_usd = costo_usd
+		self.duracion_ms = duracion_ms
+
+	def enmascarar(self, *secretos: str | None) -> ErrorIA:
+		self.detalle = _sin_secretos(self.detalle, *secretos)
+		if self.respuesta:
+			self.respuesta = _sin_secretos(self.respuesta, *secretos)
+		self.args = (self.detalle,)
+		return self
+
+
+@dataclass
+class ResultadoIA:
+	"""Datos del esquema `registrar_producto` y metadatos de la llamada, por proveedor."""
+
+	datos: dict
+	modelo: str | None = None
+	costo_usd: float = 0.0
+	duracion_ms: int | None = None
+	avisos: list[str] = field(default_factory=list)  # fotos que no se pudieron leer
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -97,12 +141,18 @@ def encolar_procesamiento(captura: str) -> None:
 	frappe.enqueue(
 		METODO_JOB,
 		queue="long",
-		timeout=TIMEOUT_JOB,
+		timeout=timeout_job(),
 		enqueue_after_commit=True,
 		job_id=id_job(captura),
 		deduplicate=True,
 		captura=captura,
 	)
+
+
+def timeout_job() -> int:
+	"""Con la API local el job debe durar más que `timeout_ia` (configurable hasta 900 s)."""
+	timeout_local = cint(frappe.db.get_single_value("Configuracion Captura", "timeout_ia"))
+	return max(TIMEOUT_JOB, timeout_local + MARGEN_JOB_LOCAL)
 
 
 def job_en_cola(captura: str) -> bool:
@@ -126,55 +176,110 @@ def procesar_captura(captura: str) -> None:
 		return  # todavía no es la hora del reintento: lo encola `reencolar_reintentos`
 
 	conf = frappe.get_single("Configuracion Captura")
-	api_key = conf.get_password("anthropic_api_key", raise_exception=False)
+	proveedor = proveedor_de(conf)
 	modelo = (conf.modelo_ia or MODELO_DEFECTO).strip()
-	if not api_key:
-		_registrar_error(
-			captura,
-			_("Falta la API key de Anthropic en Configuración Captura: cárguela y use Reprocesar IA."),
-			modelo,
-		)
+	try:
+		secreto = credencial_ia(conf, proveedor)
+	except ErrorIA as e:
+		_registrar_error(captura, e.detalle, modelo)
 		return
 
 	try:
 		ctx_nombre = naming.cargar_contexto()
 		contexto = cargar_contexto_prompt(conf, ctx_nombre)
-		contenido, avisos_fotos = construir_contenido_usuario(doc, cint(conf.max_fotos_ia) or MAX_FOTOS_DEFECTO)
-		cliente = crear_cliente(api_key, cint(conf.timeout_ia_seg) or TIMEOUT_DEFECTO)
 	except Exception:
-		_registrar_error(captura, _sin_secretos(traceback.format_exc(), api_key), modelo)
+		_registrar_error(captura, _sin_secretos(traceback.format_exc(), secreto), modelo)
 		return
 
-	# Hasta acá solo hubo lecturas: se cierra la transacción para no tenerla abierta (con su foto de
-	# lectura y sus bloqueos) durante la llamada a Claude, que puede durar hasta `timeout_ia_seg`.
-	_confirmar()
 	try:
-		datos, modelo_usado = llamar_claude(cliente, modelo, prompts.construir_system(contexto), contenido)
+		resultado = obtener_datos_ia(doc, conf, proveedor, modelo, contexto, secreto)
 	except ErrorIA as e:
-		_despues_de_un_fallo(captura, _sin_secretos(e.detalle, api_key), e.transitorio, modelo)
+		e.enmascarar(secreto)
+		_despues_de_un_fallo(captura, e.detalle, e.transitorio, modelo, e.respuesta, e.costo_usd, e.duracion_ms)
 		return
 	except Exception:
-		_despues_de_un_fallo(captura, _sin_secretos(traceback.format_exc(), api_key), False, modelo)
+		_despues_de_un_fallo(captura, _sin_secretos(traceback.format_exc(), secreto), False, modelo)
 		return
 
+	modelo_usado = resultado.modelo or modelo
 	doc = _captura_en_proceso(captura)
 	if not doc:
 		return  # la rescataron o la cambiaron mientras se esperaba a Claude
 	frappe.db.savepoint(SAVEPOINT)
 	try:
 		doc.intentos_ia = cint(doc.intentos_ia) + 1
-		doc.modelo_ia = modelo_usado or modelo
-		doc.respuesta_ia = json.dumps(datos, ensure_ascii=False, indent=1)
-		advertencias = avisos_fotos + aplicar_respuesta(doc, datos, conf, ctx_nombre)
+		doc.modelo_ia = modelo_usado
+		_anotar_consumo(doc, resultado.costo_usd, resultado.duracion_ms)
+		doc.respuesta_ia = json.dumps(resultado.datos, ensure_ascii=False, indent=1)
+		advertencias = resultado.avisos + aplicar_respuesta(doc, resultado.datos, conf, ctx_nombre)
 		doc.advertencias_ia = "\n".join(dict.fromkeys(a for a in advertencias if a)) or None
 		doc.error_log = None
 		doc.marcar_procesada()
 	except Exception:
 		respuesta = doc.respuesta_ia
 		_deshacer(SAVEPOINT)
-		_registrar_error(captura, _sin_secretos(traceback.format_exc(), api_key), modelo_usado or modelo, respuesta)
+		_registrar_error(
+			captura,
+			_sin_secretos(traceback.format_exc(), secreto),
+			modelo_usado,
+			respuesta,
+			resultado.costo_usd,
+			resultado.duracion_ms,
+		)
 		return
 	_confirmar()
+
+
+def proveedor_de(conf) -> str:
+	return PROVEEDOR_ANTHROPIC if conf.get("proveedor_ia") == PROVEEDOR_ANTHROPIC else PROVEEDOR_LOCAL
+
+
+def credencial_ia(conf, proveedor: str) -> str:
+	"""API key de Anthropic (Configuración) o token de la API local (site_config). ErrorIA si falta."""
+	if proveedor == PROVEEDOR_LOCAL:
+		from captura_productos.ai import cliente_local
+
+		return cliente_local.token_requerido()
+	api_key = conf.get_password("anthropic_api_key", raise_exception=False)
+	if not api_key:
+		raise ErrorIA(_("Falta la API key de Anthropic en Configuración Captura: cárguela y use Reprocesar IA."))
+	return api_key
+
+
+def obtener_datos_ia(
+	doc: CapturadeProducto, conf, proveedor: str, modelo: str, contexto: prompts.ContextoPrompt, secreto: str
+) -> ResultadoIA:
+	"""Arma el mensaje (leyendo las fotos), cierra la transacción de lectura y llama al proveedor.
+
+	Hasta la llamada solo hay lecturas: se cierra la transacción para no tenerla abierta (con su foto
+	de lectura y sus bloqueos) mientras se espera a Claude, que puede tardar minutos. Lanza ErrorIA si
+	la llamada o la respuesta fallan."""
+	max_fotos = cint(conf.max_fotos_ia) or MAX_FOTOS_DEFECTO
+	if proveedor == PROVEEDOR_LOCAL:
+		from captura_productos.ai import cliente_local
+
+		prompt, archivos, avisos = construir_entrada_local(doc, max_fotos)
+		system = prompts.construir_system_json(contexto)
+		_confirmar()
+		resultado = cliente_local.consultar_producto(
+			system, prompt, archivos, modelo, cint(conf.timeout_ia) or cliente_local.TIMEOUT_DEFECTO, secreto
+		)
+	else:
+		contenido, avisos = construir_contenido_usuario(doc, max_fotos)
+		cliente = crear_cliente(secreto, cint(conf.timeout_ia_seg) or TIMEOUT_DEFECTO)
+		_confirmar()
+		datos, modelo_usado = llamar_claude(cliente, modelo, prompts.construir_system(contexto), contenido)
+		resultado = ResultadoIA(datos=datos, modelo=modelo_usado)
+	resultado.avisos = avisos + resultado.avisos
+	return resultado
+
+
+def _anotar_consumo(doc: CapturadeProducto, costo_usd: float = 0.0, duracion_ms: int | None = None) -> None:
+	"""El costo se acumula entre intentos y reintentos; la duración es la de la última llamada."""
+	if costo_usd:
+		doc.costo_ia_usd = flt(doc.costo_ia_usd) + flt(costo_usd)
+	if duracion_ms is not None:
+		doc.duracion_ia_ms = cint(duracion_ms)
 
 
 def _captura_en_proceso(captura: str) -> CapturadeProducto | None:
@@ -188,8 +293,17 @@ def _captura_en_proceso(captura: str) -> CapturadeProducto | None:
 	return doc
 
 
-def _despues_de_un_fallo(captura: str, detalle: str, transitorio: bool, modelo: str) -> None:
-	"""Programa un reintento si el error es transitorio y quedan reintentos; si no, pasa a Error."""
+def _despues_de_un_fallo(
+	captura: str,
+	detalle: str,
+	transitorio: bool,
+	modelo: str,
+	respuesta: str | None = None,
+	costo_usd: float = 0.0,
+	duracion_ms: int | None = None,
+) -> None:
+	"""Programa un reintento si el error es transitorio y quedan reintentos; si no, pasa a Error.
+	`respuesta` es el texto crudo del proveedor, si llegó a responder (se guarda en respuesta_ia)."""
 	doc = _captura_en_proceso(captura)
 	if not doc:
 		return
@@ -197,12 +311,15 @@ def _despues_de_un_fallo(captura: str, detalle: str, transitorio: bool, modelo: 
 	if not transitorio or reintentos >= len(ESPERAS_REINTENTO):
 		if reintentos:
 			detalle = _("{0} (tras {1} reintentos)").format(detalle, reintentos)
-		_registrar_error(captura, detalle, modelo)
+		_registrar_error(captura, detalle, modelo, respuesta, costo_usd, duracion_ms)
 		return
 	espera = ESPERAS_REINTENTO[reintentos]
 	frappe.logger("captura_productos").warning(f"{captura}: error transitorio de IA, reintento en {espera} s")
 	doc.intentos_ia = cint(doc.intentos_ia) + 1
 	doc.modelo_ia = modelo
+	_anotar_consumo(doc, costo_usd, duracion_ms)
+	if respuesta:
+		doc.respuesta_ia = respuesta
 	doc.reintentos_ia = reintentos + 1
 	doc.reintentar_ia_en = add_to_date(now_datetime(), seconds=espera)
 	doc.error_log = _("Error transitorio; reintento {0} de {1} a partir de {2}.\n{3}").format(
@@ -212,7 +329,14 @@ def _despues_de_un_fallo(captura: str, detalle: str, transitorio: bool, modelo: 
 	_confirmar()
 
 
-def _registrar_error(captura: str, detalle: str, modelo: str | None = None, respuesta: str | None = None) -> None:
+def _registrar_error(
+	captura: str,
+	detalle: str,
+	modelo: str | None = None,
+	respuesta: str | None = None,
+	costo_usd: float = 0.0,
+	duracion_ms: int | None = None,
+) -> None:
 	"""Deja la captura en Error con el detalle técnico y un Error Log de Frappe."""
 	frappe.log_error(title=_("Captura {0}: error de IA").format(captura), message=detalle)
 	doc = _captura_en_proceso(captura)
@@ -221,6 +345,7 @@ def _registrar_error(captura: str, detalle: str, modelo: str | None = None, resp
 	doc.intentos_ia = cint(doc.intentos_ia) + 1
 	if modelo:
 		doc.modelo_ia = modelo
+	_anotar_consumo(doc, costo_usd, duracion_ms)
 	if respuesta:
 		doc.respuesta_ia = respuesta
 	doc.marcar_error(detalle, _(MENSAJE_CAPTURADOR))
@@ -359,7 +484,9 @@ def interpretar_respuesta(respuesta) -> dict:
 
 
 def validar_esquema(datos: Any) -> list[str]:
-	"""Chequeo mínimo del esquema (la salida estructurada ya lo garantiza; esto cubre otros modelos)."""
+	"""Chequeo mínimo del esquema. Con Anthropic directo la salida estructurada ya lo garantiza; con la
+	API local (JSON pedido por prompt) es la única garantía, junto con `aplicar_respuesta`, que tolera
+	tipos inesperados en el resto de los campos."""
 	if not isinstance(datos, dict):
 		return [_("no es un objeto")]
 	errores = [
@@ -413,7 +540,8 @@ def cargar_contexto_prompt(conf, ctx_nombre: naming.ContextoNombre) -> prompts.C
 
 
 def construir_contenido_usuario(doc: CapturadeProducto, max_fotos: int) -> tuple[list[dict], list[str]]:
-	"""Bloques del mensaje: fotos (con su rótulo) y al final el texto. Devuelve también avisos."""
+	"""Anthropic directo. Bloques del mensaje: fotos (con su rótulo) y al final el texto. Devuelve
+	también avisos."""
 	avisos: list[str] = []
 	contenido: list[dict] = []
 	for rotulo, url in fotos_para_ia(doc)[: max(1, max_fotos)]:
@@ -424,22 +552,45 @@ def construir_contenido_usuario(doc: CapturadeProducto, max_fotos: int) -> tuple
 		media_type, datos = imagen
 		contenido.append({"type": "text", "text": rotulo})
 		contenido.append({"type": "image", "source": {"type": "base64", "media_type": media_type, "data": datos}})
+	contenido.append({"type": "text", "text": prompts.construir_texto_usuario(datos_captura(doc))})
+	return contenido, avisos
 
+
+def construir_entrada_local(
+	doc: CapturadeProducto, max_fotos: int
+) -> tuple[str, list[tuple[str, bytes, str]], list[str]]:
+	"""API local. Devuelve (prompt, archivos, avisos); cada archivo es (nombre, bytes, media_type), con
+	las mismas fotos que el camino directo, ya reducidas y leídas solo con `leer_archivo`."""
+	avisos: list[str] = []
+	archivos: list[tuple[str, bytes, str]] = []
+	rotulos: list[tuple[str, str]] = []
+	for rotulo, url in fotos_para_ia(doc)[: max(1, max_fotos)]:
+		imagen = imagen_para_ia(url, doc.name)
+		if not imagen:
+			avisos.append(_("No se pudo leer la foto {0}: no se envió a la IA").format(url))
+			continue
+		contenido, media_type = imagen
+		nombre = f"foto-{len(archivos) + 1}{EXTENSIONES[media_type]}"
+		archivos.append((nombre, contenido, media_type))
+		rotulos.append((nombre, rotulo))
+	texto = prompts.construir_texto_usuario(datos_captura(doc))
+	return prompts.construir_prompt_json(texto, rotulos), archivos, avisos
+
+
+def datos_captura(doc: CapturadeProducto) -> prompts.DatosCaptura:
 	variantes = [
 		prompts.VarianteCapturada(
 			indice=v.idx, transcripcion=v.transcripcion or "", barcode=v.barcode or "", tiene_foto=bool(v.foto)
 		)
 		for v in (doc.variantes or [])
 	]
-	datos = prompts.DatosCaptura(
+	return prompts.DatosCaptura(
 		transcripcion=doc.transcripcion or "",
 		codigos_barras=[c.barcode for c in doc.codigos_barras or [] if c.barcode],
 		tiene_variantes=bool(doc.tiene_variantes),
 		atributos=naming.atributos_ordenados(doc),
 		variantes=variantes,
 	)
-	contenido.append({"type": "text", "text": prompts.construir_texto_usuario(datos)})
-	return contenido, avisos
 
 
 def fotos_para_ia(doc: CapturadeProducto) -> list[tuple[str, str]]:
@@ -511,7 +662,9 @@ def reducir_imagen(contenido: bytes, lado: int = LADO_FOTO_IA) -> tuple[bytes, s
 		return None
 
 
-def imagen_base64(url: str, captura: str) -> tuple[str, str] | None:
+def imagen_para_ia(url: str, captura: str) -> tuple[bytes, str] | None:
+	"""(bytes, media_type) de una foto adjunta a la captura, reducida si es grande. None si no se
+	puede leer o no es una imagen."""
 	contenido = leer_archivo(url, captura)
 	if not contenido:
 		return None
@@ -520,9 +673,14 @@ def imagen_base64(url: str, captura: str) -> tuple[str, str] | None:
 	media_type = tipo_imagen(contenido)
 	if not media_type:
 		return None
-	reducida = reducir_imagen(contenido)
-	if reducida:
-		contenido, media_type = reducida
+	return reducir_imagen(contenido) or (contenido, media_type)
+
+
+def imagen_base64(url: str, captura: str) -> tuple[str, str] | None:
+	imagen = imagen_para_ia(url, captura)
+	if not imagen:
+		return None
+	contenido, media_type = imagen
 	return media_type, base64.standard_b64encode(contenido).decode("ascii")
 
 
@@ -691,7 +849,8 @@ def _aplicar_variantes(doc: CapturadeProducto, datos: dict, maestros: _Maestros)
 
 
 def probar_conexion(api_key: str, modelo: str, timeout: float = 15) -> str:
-	"""Verifica la API key y el modelo sin generar tokens (Models API). Devuelve un texto para el usuario."""
+	"""Anthropic directo: verifica la API key y el modelo sin generar tokens (Models API). Devuelve un
+	texto para el usuario. La prueba de la API local está en `cliente_local.probar_conexion`."""
 	cliente = anthropic.Anthropic(api_key=api_key, timeout=timeout, max_retries=0)
 	try:
 		info = cliente.models.retrieve(modelo)

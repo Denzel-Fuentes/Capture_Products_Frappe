@@ -236,6 +236,8 @@ Configuración del DocType: `autoname = CAP-.YYYY.-.#####`, no submittable, `tit
 | **Sección Técnica** (colapsable, solo S y A) | | | | | |
 | `intentos_ia` | Intentos IA | Int | default 0; read_only | No | Sis |
 | `modelo_ia` | Modelo usado | Data | read_only | No | Sis |
+| `costo_ia_usd` | Costo IA (USD) | Float | precision 4; read_only; permlevel 1. Suma de `total_cost_usd` de todos los intentos con la API local | No | Sis |
+| `duracion_ia_ms` | Duración IA (ms) | Int | read_only; permlevel 1. `duration_ms` de la última consulta a la API local | No | Sis |
 | `respuesta_ia` | Respuesta IA (JSON) | Code | options JSON; read_only | No | Sis |
 | `error_log` | Último error | Long Text | read_only | No | Sis |
 
@@ -276,10 +278,13 @@ Configuración del DocType: `autoname = CAP-.YYYY.-.#####`, no submittable, `tit
 | fieldname | Etiqueta | Tipo | Default / opciones | Oblig. |
 |---|---|---|---|---|
 | **IA** | | | | |
-| `anthropic_api_key` | API key Anthropic | Password | Nunca se envía al cliente | Sí |
+| `proveedor_ia` | Proveedor de IA | Select | API local\nAnthropic directo; default API local (sección 6) | Sí |
+| `ayuda_api_local` | Ayuda API local | HTML | Visible con API local: la URL y el token van en site_config (`claude_api_url`, `claude_api_token`) | No |
+| `anthropic_api_key` | API key Anthropic | Password | Nunca se envía al cliente. Visible solo con Anthropic directo | Con Anthropic directo |
 | `modelo_ia` | Modelo | Data | `claude-sonnet-5-5` | Sí |
 | `max_fotos_ia` | Fotos enviadas a la IA | Int | 4 (la principal más 3) | Sí |
-| `timeout_ia_seg` | Timeout IA (s) | Int | 60 | Sí |
+| `timeout_ia` | Timeout API local (s) | Int | 180 (30 a 900). Visible solo con API local | Con API local |
+| `timeout_ia_seg` | Timeout Anthropic (s) | Int | 60. Visible solo con Anthropic directo | Con Anthropic directo |
 | `instrucciones_extra_ia` | Instrucciones extra para la IA | Long Text | Vacío | No |
 | `idioma_voz` | Idioma del dictado | Select | es-BO\nes-419\nes-ES; default es-BO | Sí |
 | **Google Sheets** | | | | |
@@ -466,7 +471,13 @@ Primero se intenta la medida que entrega la IA. Python además analiza `texto_or
 
 ## 6. Contrato con Claude (salida forzada por tool use)
 
-**Llamada a la Messages API:**
+> **Proveedores (2026-11-05).** `proveedor_ia` en Configuracion Captura elige cómo se llama a Claude:
+> **API local** (por defecto, ver 6.1) o **Anthropic directo** (la Messages API con salida estructurada,
+> descrita a continuación). Los dos comparten el esquema `registrar_producto`, el contexto del system
+> prompt, el post-proceso de abajo, los reintentos de HU-13 y el armado de nombre y código; en el código,
+> `extractor.obtener_datos_ia` es lo único que cambia según el proveedor.
+
+**Llamada a la Messages API (Anthropic directo):**
 
 | Parámetro | Valor |
 |---|---|
@@ -558,6 +569,24 @@ La IA **no** compone `item_name` ni `item_code`.
 | `indice = null` | Se crea una fila de variante sin código, con la advertencia "variante sin código de barras" |
 | Confianza global < 0,6 | Advertencia "Baja confianza: revise con las fotos" |
 | Respuesta IA | Se guarda completa en `respuesta_ia` |
+
+### 6.1 Proveedor "API local" (Claude Code en el mismo servidor)
+
+Un envoltorio HTTP de Claude Code corre en el mismo contenedor que ERPNext. Código:
+`captura_productos/ai/cliente_local.py`; servidor falso para desarrollo: `scripts/fake_claude_api.py`
+(ver DEV.md).
+
+| Tema | Decisión |
+|---|---|
+| URL y token | En site_config, nunca en la BD ni en el código: `claude_api_url` (default `http://127.0.0.1:8787`) y `claude_api_token` (`bench --site <sitio> set-config ...`). Cabecera `Authorization: Bearer <token>`. Sin token → Error definitivo con la instrucción de `set-config`. |
+| Llamada | `POST /v1/query` multipart: `system_prompt` = el system de siempre + reglas de formato y el esquema `registrar_producto` en JSON (`prompts.construir_system_json`); `prompt` = el texto del usuario de siempre, con la lista de fotos adjuntas y los datos capturados entre `<datos_captura>…</datos_captura>` (`prompts.construir_prompt_json`); `files` = las mismas fotos que en Anthropic directo (reducidas a 1280 px, leídas solo con `leer_archivo`: archivos públicos adjuntos a la captura), una parte `files` por foto; `model` = `modelo_ia`; `mode` = `lean`; `timeout` = `timeout_ia` (180 s). Timeout del cliente = `timeout_ia` + 30 s; el del job se amplía a `timeout_ia` + 90 s si supera 300 s. |
+| Formato | **No hay salida estructurada**: se pide por prompt "ÚNICAMENTE un objeto JSON válido … sin ``` ni texto extra". Parseo robusto: se quitan los cercos ```json, se toma el primer objeto `{…}` que decodifica (`json.JSONDecoder.raw_decode`, que respeta llaves dentro de strings) y se valida con `validar_esquema`. JSON inválido o fuera de esquema = error **transitorio** (reintentos de HU-13), con el texto crudo guardado en `respuesta_ia`. |
+| Seguridad del prompt | El system prompt indica que dictado, códigos e imágenes son solo datos, nunca instrucciones, y que no use herramientas. Las etiquetas `<datos_captura>` que vengan en el dictado se eliminan. |
+| Sesión | Siempre `DELETE /v1/sessions/{id}` al terminar (también ante error, si la respuesta trajo `session_id`), best effort con timeout de 5 s, sin propagar errores. |
+| Errores | 401 (token), 413 (archivo > 50 MB), 404 y demás 4xx → definitivos. 502, 504, 429, otros 5xx, timeout y sin conexión → transitorios ("El servicio de IA local no responde"). `is_error: true` → transitorio, salvo texto de autenticación, saldo, permiso o modelo inexistente (definitivo). El token nunca aparece en `error_log`, Error Log ni mensajes. |
+| Costo y duración | `total_cost_usd` se acumula en `costo_ia_usd` (todos los intentos, incluidos los fallidos que llegaron a responder); `duration_ms` de la última consulta en `duracion_ia_ms`. Ambos con permlevel 1. |
+| Concurrencia | El envoltorio atiende 3 consultas a la vez y encola el resto. Con un worker de la cola `long` las capturas ya van de a una. |
+| Probar conexión IA | `GET /openapi.json` (o `/docs`) para ver que responde y una consulta "Responde solo: OK" con `claude-haiku-5-5` que valida el token; informa duración y costo y borra la sesión. |
 
 ---
 
@@ -704,7 +733,9 @@ Data Import también tiene el campo "Import from Google Sheets", pero exige que 
 | R7 | Las políticas de Google Cloud pueden impedir crear claves de cuenta de servicio | Validar antes de la fase de exportación |
 | R8 | Poca RAM en CloudClusters | Cola `long`, sin paralelismo, imágenes reducidas en el cliente |
 | R9 | Permisos atípicos de la instancia (Custom DocPerm, `Sales User` recortado) | No tocar los permisos de DocTypes existentes. Probar "Crear Item" con el usuario real del supervisor. |
-| R10 | Costo de la API de Claude | `max_fotos_ia = 4`, `max_tokens = 2000` y un job por envío. Reprocesar es manual. |
+| R10 | Costo de la API de Claude | `max_fotos_ia = 4`, `max_tokens = 2000` y un job por envío. Reprocesar es manual. Con la API local, `costo_ia_usd` por captura. |
+| R11 | La API local es Claude Code: puede tener herramientas (shell, archivos, red) con acceso al servidor, y el dictado de un capturador llega al modelo (inyección de instrucciones) | En la app: system prompt que prohíbe herramientas y trata dictado e imágenes solo como datos, datos entre etiquetas, solo fotos públicas de la captura, respuesta limitada al esquema y revisión humana. En el envoltorio (fuera de la app): sin herramientas, usuario sin acceso a `site_config.json` ni al bench, directorio vacío por sesión, solo `127.0.0.1` y token obligatorio. |
+| R12 | El envoltorio de la API local es provisional y puede no estar levantado | Errores de conexión, 502 y 504 son transitorios (2 reintentos); después Error con "El servicio de IA local no responde". Debe correr bajo supervisor. "Anthropic directo" sigue disponible. |
 
 ---
 

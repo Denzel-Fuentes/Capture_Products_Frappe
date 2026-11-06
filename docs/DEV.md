@@ -16,7 +16,8 @@ corriendo en el stack Docker local `erpnext-dev`.
 | Código de la app | `C:\Users\denze\OneDrive\Documentos\App-Frappe` (este repo), **bind mount** en `/workspace/frappe-bench/apps/captura_productos` |
 | Sitio | `dev.localhost` (developer_mode 1, allow_tests 1), servido en http://localhost:8000 |
 | Login | `Administrator` / `admin` (solo desarrollo local) |
-| Dependencias Python de la app | `anthropic` 2.6.0, `gspread` 6.2.1, `google-auth` 2.48.0 (declaradas en `pyproject.toml`) |
+| Dependencias Python de la app | `anthropic` 2.6.0, `gspread` 6.2.1, `google-auth` 2.48.0 (declaradas en `pyproject.toml`); `requests` y `werkzeug` vienen con Frappe |
+| IA en dev | API local **falsa** (`scripts/fake_claude_api.py`, ver "IA con la API local falsa") |
 
 Frappe y ERPNext viven en el volumen (rápido); solo esta app está en bind mount, así lo que se edita
 en Windows lo ve el bench al instante y lo que genera el bench (DocTypes exportados por developer_mode)
@@ -111,6 +112,51 @@ bench --site dev.localhost run-tests --app captura_productos --failfast --covera
 
 Detalle de cada corrida: `logs/frappe.testing.log` (o `--verbose`). Los tests corren contra la base de
 `dev.localhost`; Frappe hace rollback de lo que crean, pero conviene no depender de datos manuales.
+
+## IA con la API local falsa (`scripts/fake_claude_api.py`)
+
+En producción la IA usa por defecto la **API local**: un envoltorio HTTP de Claude Code que corre en el
+mismo contenedor que ERPNext (spec sección 6). En dev se reemplaza por un servidor **falso** que imita el
+contrato (`POST /v1/query` multipart, `POST /v1/query/json`, `DELETE /v1/sessions/{id}`,
+`/openapi.json`, `/docs`), exige `Authorization: Bearer <token>` y devuelve en `result` un JSON plausible
+de `registrar_producto` (alternando JSON puro, envuelto en ```json y con texto alrededor). No llama a
+ninguna IA ni cuesta nada. Solo usa werkzeug (ya está en el env del bench).
+
+Levantarlo dentro del contenedor, en 127.0.0.1:8787, y configurar `dev.localhost` (el token es un valor
+de prueba generado en el momento; no se imprime):
+
+```bash
+docker exec -it -w /workspace/frappe-bench erpnext-dev-frappe-1 bash
+# ya dentro:
+TOKEN=$(./env/bin/python -c "import secrets; print(secrets.token_urlsafe(32))")
+bench --site dev.localhost set-config claude_api_url http://127.0.0.1:8787
+bench --site dev.localhost set-config claude_api_token "$TOKEN"
+FAKE_CLAUDE_API_TOKEN="$TOKEN" nohup ./env/bin/python apps/captura_productos/scripts/fake_claude_api.py \
+    > logs/fake-claude-api.log 2>&1 &
+curl -s http://127.0.0.1:8787/openapi.json        # responde el falso
+```
+
+Si el servidor ya estaba levantado con otro token, apagarlo y volver a levantarlo con el token que
+quedó en site_config:
+`FAKE_CLAUDE_API_TOKEN=$(./env/bin/python -c "import json; print(json.load(open('sites/dev.localhost/site_config.json'))['claude_api_token'])")`.
+
+Después de cambiar código del extractor, reiniciar worker y scheduler (`scripts/dev-start.sh stop &&
+scripts/dev-start.sh`). En Configuración Captura: **Proveedor de IA = API local** y **Probar → Probar
+conexión IA** (hace `GET /openapi.json` y una consulta "Responde solo: OK" con `claude-haiku-5-5`).
+
+- **Simular fallos**: con la variable `FAKE_CLAUDE_MODO` al levantarlo (`401`, `404`, `413`, `502`,
+  `504`, `JSON_INVALIDO`, `ESQUEMA`, `IS_ERROR`, `LENTO`) o escribiendo una palabra clave en el dictado
+  de la captura: `FAKE_502`, `FAKE_401`, `FAKE_504`, `FAKE_JSON_INVALIDO`, `FAKE_ESQUEMA`,
+  `FAKE_IS_ERROR`, `FAKE_LENTO` (duerme `FAKE_CLAUDE_LENTO_S`, 20 s por defecto). Un 502 deja la captura
+  en Procesando con reintento a los 30 s y 120 s (lo encola el scheduler) y después pasa a Error.
+- **Ver sesiones** (solo el falso): `curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8787/v1/sessions`
+  → `{"vivas": [...], "borradas": [...]}`. Tras cada consulta la app borra la sesión, así que `vivas`
+  debe quedar vacía.
+- **Log**: `logs/fake-claude-api.log` (no registra el token).
+- **Apagarlo**: `pkill -f fake_claude_api.py` (dentro del contenedor). Las capturas que se envíen con el
+  servidor apagado reintentan dos veces ("El servicio de IA local no responde") y terminan en Error.
+- **Volver a Anthropic directo** (por ejemplo, para probar con una API key real): elegirlo en
+  Configuración Captura; la API key solo se muestra con esa opción.
 
 ## Pantalla /captura (usuario de prueba)
 

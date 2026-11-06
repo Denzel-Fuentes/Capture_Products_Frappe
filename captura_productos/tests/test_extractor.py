@@ -1,4 +1,6 @@
-"""Extractor de Claude con la API mockeada (spec secciones 6, 13, HU-09 y HU-13)."""
+"""Extractor de Claude con la API mockeada (spec secciones 6, 13, HU-09 y HU-13).
+
+Proveedor "Anthropic directo"; la API local está en test_cliente_local.py."""
 
 import json
 import os
@@ -174,7 +176,7 @@ class TestRespuesta(CapturaTestCase):
 class TestJob(CapturaTestCase):
 	def setUp(self):
 		super().setUp()
-		configurar(anthropic_api_key=API_KEY)
+		configurar(anthropic_api_key=API_KEY, proveedor_ia=extractor.PROVEEDOR_ANTHROPIC)
 		# frappe.log_error se guarda aunque el test haga rollback: se mockea para no ensuciar Error Log.
 		self.log_error = self.enterContext(patch("frappe.log_error"))
 
@@ -260,7 +262,7 @@ class TestJob(CapturaTestCase):
 		self.assertEqual(doc.intentos_ia, 2)
 
 	def test_sin_api_key(self):
-		configurar(anthropic_api_key="")
+		configurar(anthropic_api_key="", proveedor_ia=extractor.PROVEEDOR_ANTHROPIC)
 		frappe.db.delete("__Auth", {"doctype": "Configuracion Captura", "fieldname": "anthropic_api_key"})
 		doc = nueva_captura(transcripcion="pepsi de litro").insert()
 		cliente = self.procesar(doc)
@@ -287,7 +289,8 @@ class TestJob(CapturaTestCase):
 		doc.db_set("reintentar_ia_en", add_to_date(now_datetime(), seconds=-1), update_modified=False)
 		with patch.object(extractor, "encolar_procesamiento") as encolar:
 			extractor.reencolar_reintentos()
-		encolar.assert_called_once_with(doc.name)
+		# assert_any_call: el sitio puede tener otras capturas con reintento vencido (pruebas manuales).
+		encolar.assert_any_call(doc.name)
 		doc.reload()
 		self.assertIsNone(doc.reintentar_ia_en)
 

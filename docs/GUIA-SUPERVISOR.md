@@ -258,8 +258,8 @@ El capturador ve "No se pudo procesar. El supervisor lo revisará." y puede toca
 
 | Último error menciona | Causa | Qué hacer |
 |---|---|---|
-| API key, 401, "Falta la API key" | La clave de la IA falta o es inválida | Administrador: **Configuración Captura → Probar → Probar conexión IA**, corrige y guarda. Después **Reprocesar IA**. |
-| 429, 500, 529, timeout | Servicio de IA saturado (ya se reintentó 2 veces solo) | Espera unos minutos y **Reprocesar IA**. |
+| "Token de la API local", "Falta claude_api_token", API key, 401 | La clave de la IA falta o es inválida | Avisa al administrador: la revisa con **Configuración Captura → Probar → Probar conexión IA** (el token de la API local se configura en el servidor, no en esta pantalla). Después **Reprocesar IA**. |
+| "El servicio de IA local no responde", 429, 500, 502, 504, 529, timeout | Servicio de IA caído o saturado (ya se reintentó 2 veces solo) | Espera unos minutos y **Reprocesar IA**. Si pasa con todas las capturas, avisa al administrador. |
 | Respuesta no válida / esquema | La IA devolvió algo mal formado | **Reprocesar IA** una vez. Si se repite, revisa fotos y dictado. |
 
 3. **Acciones → Reprocesar IA** → **Sí**.
@@ -339,9 +339,11 @@ Truco: para conservar el tipo en el nombre, mapea "jumbo" a "Jumbo Jugo".
 - **ID del spreadsheet**: la parte de la URL de la hoja entre `/d/` y `/edit`.
 - **Credenciales de la cuenta de servicio (JSON)**: pega el JSON completo. Comparte la hoja con el correo de esa cuenta como **Editor**.
 - **Prefijo de la pestaña** (`Items`) y **URL base de las imágenes** (la dirección del sitio, para que el Item tenga imagen).
-- **API key Anthropic**, **Modelo** e **Instrucciones extra para la IA** (por ejemplo, reglas propias del negocio).
+- **Proveedor de IA**: **API local** (por defecto; el servicio de IA del propio servidor, su dirección y su token los configura el administrador en el servidor) o **Anthropic directo** (pide la **API key Anthropic**, que solo aparece con esa opción).
+- **Modelo**, **Timeout API local (s)** e **Instrucciones extra para la IA** (por ejemplo, reglas propias del negocio).
+- En cada captura, **Técnica → Costo IA (USD)** suma lo que costaron todos sus intentos con la API local.
 - Valores por defecto del Item: **Grupo por defecto**, **UOM por defecto**, **Empresa**, **Almacén por defecto**, **Mantener stock**, **Permitir venta**, **Permitir compra**.
-- Para verificar: menú **Probar → Probar conexión IA** y **Probar → Probar Google Sheet**. Responden OK o el error concreto en menos de 15 segundos.
+- Para verificar: menú **Probar → Probar conexión IA** y **Probar → Probar Google Sheet**. Responden OK o el error concreto (la prueba de la API local hace una consulta corta y puede tardar hasta un minuto).
 
 ---
 

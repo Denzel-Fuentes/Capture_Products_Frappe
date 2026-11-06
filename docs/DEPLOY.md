@@ -136,6 +136,8 @@ erpnext$ grep -E 'developer_mode|maintenance_mode|pause_scheduler' sites/default
 ```bash
 erpnext$ for u in https://github.com https://pypi.org/simple/anthropic/ https://api.anthropic.com https://sheets.googleapis.com https://oauth2.googleapis.com; do printf '%-45s ' "$u"; curl -s -o /dev/null -w '%{http_code}\n' --max-time 10 "$u"; done
 # Cualquier código HTTP (200, 301, 401, 404) sirve: lo que importa es que no dé 000 (sin conexión).
+# api.anthropic.com solo hace falta con el proveedor "Anthropic directo"; con la API local (por
+# defecto) la IA va a http://127.0.0.1:8787 dentro del contenedor (sección 3.1).
 
 erpnext$ free -m          # RAM libre antes de empezar
 erpnext$ df -h /cloudclusters
@@ -294,20 +296,76 @@ haber al menos un worker cuyo tipo de cola incluya `long`. En **Scheduled Job Ty
 
 ## 3. Configuración posterior a la instalación
 
-Todo se carga en el Desk en **Configuracion Captura** (solo System Manager). Las claves van en campos
-de tipo Password: Frappe las guarda cifradas con la `encryption_key` del sitio y no se envían al
-navegador.
+Casi todo se carga en el Desk en **Configuracion Captura** (solo System Manager). Las claves van en
+campos de tipo Password: Frappe las guarda cifradas con la `encryption_key` del sitio y no se envían al
+navegador. La excepción es la API local de IA: su URL y su token van en `site_config.json` (3.1).
 
 > **Importante:** la `encryption_key` está en `sites/default/site_config.json`. Si se restaura la base en
 > otro sitio sin esa clave, las contraseñas guardadas (API key, JSON de Google) no se pueden descifrar y
 > hay que volver a cargarlas.
 
-### 3.1 API key de Anthropic
+### 3.1 IA: API local de Claude Code (por defecto)
+
+La IA usa por defecto la **API local**: un envoltorio HTTP de Claude Code que corre en el mismo
+contenedor que ERPNext (spec sección 6). No hace falta API key de Anthropic. La URL y el token del
+envoltorio **no** van en Configuracion Captura ni en el código: van en el `site_config.json` del sitio
+`default`.
+
+1. **[CONFIRMAR] El envoltorio responde** desde el contenedor (no requiere token):
+
+   ```bash
+   erpnext$ curl -s http://127.0.0.1:8787/openapi.json | head -c 200; echo
+   # Debe imprimir el JSON de OpenAPI (FastAPI). Si no responde: el servicio está caído o en otro puerto.
+   ```
+
+2. **[CONFIRMAR] El envoltorio está bajo supervisor** (u otro gestor de procesos) para que sobreviva a
+   los reinicios del contenedor y a `supervisorctl restart all`. Comprobar que aparece en
+   `root# supervisorctl status`. Si se lanzó a mano (por ejemplo con `nohup`), se pierde en el próximo
+   reinicio y las capturas terminan en Error ("El servicio de IA local no responde").
+
+3. Configurar URL y token (el token lo da quien instaló el envoltorio; no copiarlo en chats, correos ni
+   archivos del repo):
+
+   ```bash
+   erpnext$ bench --site default set-config claude_api_url http://127.0.0.1:8787
+   erpnext$ bench --site default set-config claude_api_token '<TOKEN_DEL_ENVOLTORIO>'
+   ```
+
+   Para no dejar el token en el historial de la shell, anteponer un espacio al comando (si `HISTCONTROL`
+   incluye `ignorespace`) o borrarlo después con `history -d`. `claude_api_url` es opcional si el
+   envoltorio usa el puerto por defecto (`http://127.0.0.1:8787`).
+
+4. En Configuracion Captura: **Proveedor de IA = API local** (el patch de la versión lo fija en sitios
+   existentes), **Modelo** `claude-sonnet-5-5` (o `claude-haiku-5-5`, más rápido y barato) y **Timeout
+   API local (s)** 180 (30 a 900; incluye la espera en la cola del envoltorio). Guardar y **Probar →
+   Probar conexión IA**: comprueba que el servicio responde y hace una consulta mínima con
+   `claude-haiku-5-5` para validar el token; informa duración y costo y borra la sesión.
+
+**Concurrencia.** El envoltorio atiende **3 consultas a la vez**; las demás esperan su turno (y ese
+tiempo cuenta dentro de `timeout_ia`). La app manda cada captura como un trabajo de la cola `long`; con
+un solo worker `long` (lo normal en esta instancia) las capturas ya se procesan de a una, así que no se
+llega al límite. Si se agregan workers `long`, más de 3 capturas simultáneas esperan en el envoltorio:
+subir `timeout_ia` si aparecen errores 504.
+
+**Costo.** Cada captura guarda `costo_ia_usd` (suma de todos los intentos) y `duracion_ia_ms` en la
+sección Técnica (solo supervisores). El envoltorio usa la cuenta de Claude Code del servidor: revisar el
+consumo ahí.
+
+**Seguridad del envoltorio [CONFIRMAR].** Es Claude Code: puede tener herramientas (Bash, leer y escribir
+archivos, red) con acceso al servidor, y el dictado de un capturador llega al modelo. La app le pide no
+usar herramientas y tratar dictado e imágenes solo como datos, pero eso es una instrucción, no un
+bloqueo. Configurar en el envoltorio: sin herramientas (o solo lectura de los archivos adjuntos de la
+sesión), un usuario del sistema sin permiso de lectura sobre `sites/*/site_config.json` ni el bench, un
+directorio de trabajo vacío por sesión, escucha solo en `127.0.0.1` y el token obligatorio.
+
+#### Alternativa: Anthropic directo
+
+Solo si se elige **Proveedor de IA = Anthropic directo** (el campo de la API key aparece con esa opción):
 
 1. Entrar a https://console.anthropic.com con la cuenta de la empresa.
 2. **[CONFIRMAR]** Que la organización tiene crédito o un método de pago, y definir un límite de gasto
    mensual (Settings → Limits). Costo estimado: un llamado por captura, hasta 4 fotos y
-   `max_tokens = 2000` (spec R10).
+   `max_tokens = 4096` (spec R10).
 3. Settings → API Keys → **Create Key**, nombre `erpnext-captura-prod`. Se recomienda un workspace propio
    para esta app, así se puede limitar y revocar por separado.
 4. Copiar la clave y pegarla directo en Configuracion Captura → **API key Anthropic**. No guardarla en
@@ -365,7 +423,8 @@ como `http://default/files/...`, que no sirven para Data Import.
 
 En Configuracion Captura, **Guardar** y luego menú **Probar**:
 
-- **Probar conexión IA**: debe responder OK. Errores típicos en la tabla de la sección 6.
+- **Probar conexión IA**: debe responder "Conexión OK con la API local (...)" con duración y costo (o,
+  con Anthropic directo, el modelo). Errores típicos en la tabla de la sección 6.
 - **Probar Google Sheet**: debe abrir la hoja y confirmar que la puede editar.
 
 (Requiere que el bug B2 de QA esté corregido; ver "Bloqueantes".)
@@ -519,6 +578,12 @@ root# supervisorctl restart all
 root# supervisorctl status
 ```
 
+**Primera versión con la API local de IA:** el `migrate` corre un patch que cambia **Proveedor de IA** a
+"API local". Antes del paso 4, configurar `claude_api_url` y `claude_api_token` (sección 3.1, pasos 1 a
+3); si no, las capturas nuevas terminan en Error con "Falta claude_api_token en site_config". Para seguir
+con la API de Anthropic, volver a elegir "Anthropic directo" en Configuracion Captura (la API key
+guardada se conserva).
+
 Después, la prueba de humo (sección 6). El reinicio es necesario siempre que cambie código Python: el
 web, los workers y el scheduler no recargan solos. Si la versión solo cambia JS/CSS, alcanza con `build`
 y `clear-cache`.
@@ -611,9 +676,13 @@ Usar un usuario capturador de prueba y el usuario real de un supervisor. Marcar 
 | `supervisorctl`: `PermissionError` / `error: <class 'PermissionError'>` | Se ejecutó como `erpnext` | Ejecutarlo como `root` |
 | `bench` muestra un `WARN` y no hace nada | Se ejecutó como `root` | `su - erpnext` y `cd /cloudclusters/erpnext/frappe-bench` |
 | Capturas en "Procesando" que no avanzan | No hay worker de la cola `long`, el scheduler está apagado o el worker se cayó | Sección 2.5. Logs: `tail -n 100 logs/worker.error.log logs/scheduler.log`. Desk → RQ Job (estado del trabajo `captura-ia-<CAP-...>`). A los 20 minutos `rescatar_atascadas` las pasa a Error y se pueden reprocesar. |
-| Capturas en "Error" con mensaje de autenticación (401) | API key mal copiada o revocada | Cargar la key de nuevo, Guardar, "Probar conexión IA" y reprocesar |
+| "El servicio de IA local no responde" (se reintenta y luego Error) | Envoltorio caído, reiniciado sin supervisor, en otro puerto, o 502/504 de Claude Code | `curl -s http://127.0.0.1:8787/openapi.json` desde el contenedor; `supervisorctl status`; revisar `claude_api_url`. Con 504 frecuentes, subir **Timeout API local** |
+| "Token de la API local inválido o ausente (HTTP 401)" o "Falta claude_api_token en site_config" | Token mal copiado, cambiado en el envoltorio, o no configurado | `bench --site default set-config claude_api_token '<TOKEN>'`, "Probar conexión IA" y reprocesar |
+| "Imagen demasiado grande para la API local (HTTP 413)" | Un archivo de más de 50 MB (no debería pasar: las fotos se reducen a 1280 px) | Revisar las fotos de la captura |
+| "La respuesta de la API local no trae un objeto JSON válido" / "no cumple el esquema" | El modelo respondió texto en vez de JSON | Se reintenta solo (30 s y 120 s); el texto crudo queda en **Respuesta IA**. Si se repite, probar con otro **Modelo** |
+| Capturas en "Error" con mensaje de autenticación (401) de Anthropic | API key mal copiada o revocada (solo con Anthropic directo) | Cargar la key de nuevo, Guardar, "Probar conexión IA" y reprocesar |
 | Error de modelo inexistente (404) | `modelo_ia` no disponible para la cuenta | Cambiar **Modelo** en Configuracion Captura |
-| Error de crédito o límite (400/429) | Sin crédito o límite de gasto alcanzado | Consola de Anthropic → Billing / Limits. Los errores transitorios se reintentan solos cada minuto. |
+| Error de crédito o límite (400/429) | Sin crédito o límite de gasto alcanzado (Anthropic directo) | Consola de Anthropic → Billing / Limits. Los errores transitorios se reintentan solos cada minuto. |
 | "Probar Google Sheet" da 403 / "permission denied" | La hoja no está compartida con el `client_email`, o falta habilitar la API | Compartir como Editor (3.2, paso 6); habilitar Sheets API y Drive API |
 | "Probar Google Sheet" da 404 | ID del spreadsheet mal copiado | Copiar solo la parte entre `/d/` y `/edit` |
 | "Service account key creation is disabled" | Política de la organización de Google (R7) | 3.2, paso 4 |

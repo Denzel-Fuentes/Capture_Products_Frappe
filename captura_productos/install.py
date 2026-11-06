@@ -9,8 +9,10 @@ from captura_productos import naming
 GRUPO_BEBIDAS = "1.9 Bebidas Embotelladas"
 
 VALORES_POR_DEFECTO = {
+	"proveedor_ia": "API local",
 	"modelo_ia": "claude-sonnet-5-5",
 	"max_fotos_ia": 4,
+	"timeout_ia": 180,
 	"timeout_ia_seg": 60,
 	"idioma_voz": "es-BO",
 	"pestana_sheet": "Items",

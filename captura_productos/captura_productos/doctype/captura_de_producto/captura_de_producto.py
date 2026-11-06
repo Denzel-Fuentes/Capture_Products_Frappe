@@ -72,7 +72,9 @@ class CapturadeProducto(Document):
 		client_uuid: DF.Data | None
 		codigos_barras: DF.Table[CapturaCodigoBarras]
 		confianza_ia: DF.Percent
+		costo_ia_usd: DF.Float
 		descripcion: DF.SmallText | None
+		duracion_ia_ms: DF.Int
 		error_log: DF.LongText | None
 		estado: DF.Literal[
 			"Borrador", "Procesando", "Por revisar", "Aprobado", "Exportado", "Creado", "Error"
